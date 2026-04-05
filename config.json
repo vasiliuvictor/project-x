@@ -1,0 +1,113 @@
+{
+  "server": {
+    "port": 3000,
+    "host": "0.0.0.0"
+  },
+  "schedule": {
+    "enabled": true,
+    "intervalMinutes": 60
+  },
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "requestDelayMs": 2000,
+  "maxRedirects": 5,
+  "requestTimeoutMs": 15000,
+
+  "scrapers": {
+    "realEstate": {
+      "enabled": true,
+      "sources": [
+        {
+          "name": "Booli",
+          "url": "https://www.booli.se/_next/data/LJqNjPE_3KBrODXHLcIOP/sok/till-salu.json?isNewConstruction=0&maxListPrice=200000&minRooms=3&objectType=Villa,Fritidshus&upcomingSale=0&searchType=till-salu",
+          "type": "json",
+          "urlTemplate": "https://www.booli.se/bostad/{id}",
+          "mappings": {
+            "list": "pageProps.searchResult.result",
+            "title": "heading",
+            "price": "listPrice",
+            "address": "location.address.streetAddress",
+            "bedrooms": "rooms",
+            "sqft": "livingArea",
+            "id": "booliId",
+            "image": "mainImage.url"
+          }
+        }
+      ]
+    },
+    "jobs": {
+      "enabled": true,
+      "sources": [
+        {
+          "name": "Arbetsförmedlingen",
+          "url": "https://platsbanken-api.arbetsformedlingen.se/jobs/v1/search",
+          "type": "json",
+          "method": "post",
+          "keywords": ["Angular", "Java", "Database", "Oracle", "SQL", "PLSQL"],
+          "searchBody": {
+            "fromDate": null,
+            "order": "relevance",
+            "source": "pb"
+          },
+          "pagination": {
+            "countField": "numberOfAds",
+            "pageSize": 100,
+            "dataSource": "pb"
+          },
+          "mappings": {
+            "list": "ads",
+            "title": "title",
+            "company": "workplaceName",
+            "location": "workplace",
+            "postedDate": "publishedDate",
+            "sourceLink": "pb"
+          }
+        },
+        {
+          "name": "Indeed Sweden - Angular",
+          "technology": "Angular",
+          "url": "https://se.indeed.com/jobs?q=Angular&l=Sverige",
+          "type": "html",
+          "selectors": {
+            "container": ".job_seen_beacon",
+            "title": "h2.jobTitle a span",
+            "company": ".companyName",
+            "location": ".companyLocation",
+            "salary": ".salary-snippet-container",
+            "description": ".job-snippet",
+            "link": "h2.jobTitle a[href]"
+          }
+        },
+        {
+          "name": "Indeed Sweden - Java",
+          "technology": "Java",
+          "url": "https://se.indeed.com/jobs?q=Java&l=Sverige",
+          "type": "html",
+          "selectors": {
+            "container": ".job_seen_beacon",
+            "title": "h2.jobTitle a span",
+            "company": ".companyName",
+            "location": ".companyLocation",
+            "salary": ".salary-snippet-container",
+            "description": ".job-snippet",
+            "link": "h2.jobTitle a[href]"
+          }
+        }
+      ]
+    },
+    "news": {
+      "enabled": true,
+      "keywords": ["technology", "AI", "housing market"],
+      "feeds": [
+        {
+          "name": "The Local Sweden",
+          "url": "https://www.thelocal.se/feed/"
+        }
+      ]
+    }
+  },
+
+  "storage": {
+    "dataDir": "./data",
+    "maxItemsPerType": 2000
+  }
+}

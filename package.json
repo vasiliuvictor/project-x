@@ -1,0 +1,10 @@
+{
+  "name": "project-x-scraper",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Personal web scraper & news aggregator — zero dependencies",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  }
+}
