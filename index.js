@@ -16,8 +16,8 @@ initStorage(config);
 // Start HTTP server
 const server = http.createServer((req, res) => handleRequest(req, res, config));
 
-server.listen(config.server.port, config.server.host, () => {
-  const { port } = config.server;
+const port = process.env.PORT || config.server.port;
+server.listen(port, config.server.host, () => {
 
   logger.info(`Server started on port ${port}`);
   console.log('');

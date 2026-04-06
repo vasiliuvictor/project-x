@@ -21,6 +21,11 @@ export function handleRequest(req, res, config) {
   // CORS for API calls from same page
   res.setHeader('Access-Control-Allow-Origin', '*');
 
+  // Health check (keep-alive ping)
+  if (method === 'GET' && path === '/health') {
+    return json(res, { ok: true });
+  }
+
   // Dashboard
   if (method === 'GET' && path === '/') {
     return html(res, dashboardPage());
