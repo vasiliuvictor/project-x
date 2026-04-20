@@ -157,17 +157,31 @@ ${candidate.profile}
    Click it. If the page already IS the application form, skip this step.
    If you cannot find an Apply button and the page is not a form, stop and explain what you see.
 
-3. Take a snapshot to see the current form state.
+3. Check whether the application is via EMAIL or via a WEB FORM:
+   - EMAIL application: the page shows an email address to send the application to (e.g. "Send your CV to jobs@company.com", a mailto: link, or explicit instructions to email).
+   - WEB FORM application: the page contains input fields to fill in directly.
 
-4. Identify ALL fillable text/textarea fields visible on the page at once, then call browser_fill_form in a single call with all of them mapped to the correct values from the candidate profile above. Do not fill fields one by one.
+   If it is an EMAIL application:
+   - Extract the destination email address.
+   - Compose a short subject line: "Application – ${job.title} – ${candidate.name === 'andrei' ? 'Vasiliu Andrei-Victor' : 'Vasiliu Cristina'}"
+   - Write a concise email body (3 short paragraphs) following the candidate's cover letter preferences above.
+   - Output ONLY the following JSON block and nothing else (no extra text before or after):
+   \`\`\`json
+   {"applicationEmail":"<address>","emailSubject":"<subject>","emailBody":"<body with \\n for newlines>"}
+   \`\`\`
+   Then stop — do not interact with the page further.
+
+4. (Web form only) Take a snapshot to see the current form state.
+
+5. (Web form only) Identify ALL fillable text/textarea fields visible on the page at once, then call browser_fill_form in a single call with all of them mapped to the correct values from the candidate profile above. Do not fill fields one by one.
    - For dropdowns: use browser_select_option.
    - For checkboxes/radio buttons: use browser_click.
    - For file upload fields (CV/resume): use browser_file_upload with the CV path: ${candidate.cv}
    - For cover letter / personligt brev fields: only fill if it is a plain text input or textarea. Skip rich text editors (iframe-based, TinyMCE, Quill) entirely.
 
-5. For multi-step forms: after filling all fields on the current step, click Next / Continue / Nästa and repeat from step 3 until you reach the final submit step.
+6. (Web form only) For multi-step forms: after filling all fields on the current step, click Next / Continue / Nästa and repeat from step 4 until you reach the final submit step.
 
-6. ${submitInstruction}
+7. (Web form only) ${submitInstruction}
 
 ## Rules
 - If you encounter a CAPTCHA: stop, describe it, and tell me to solve it in the browser window.
@@ -194,6 +208,17 @@ const ALLOWED_TOOLS = [
   'mcp__playwright__browser_evaluate',
 ].join(',');
 
+// --- Parse email fields from Claude output if it emitted the JSON block ---
+function parseEmailBlock(output) {
+  const match = output.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[1]);
+    if (parsed.applicationEmail) return parsed;
+  } catch { /* not valid JSON */ }
+  return null;
+}
+
 // --- Run Claude for one job ---
 function runClaude(job) {
   const prompt = buildPrompt(job);
@@ -206,9 +231,12 @@ function runClaude(job) {
 
   const result = spawnSync(
     'claude',
-    ['--print','--model', 'claude-haiku-4-5-20251001', '--allowedTools', ALLOWED_TOOLS],
-    { input: prompt, stdio: ['pipe', 'inherit', 'inherit'], env: process.env },
+    ['--print', '--model', 'claude-haiku-4-5-20251001', '--allowedTools', ALLOWED_TOOLS],
+    { input: prompt, stdio: ['pipe', 'pipe', 'inherit'], encoding: 'utf-8', env: process.env },
   );
+
+  // Relay Claude's stdout to the terminal so the user sees it
+  if (result.stdout) process.stdout.write(result.stdout);
 
   if (result.error) {
     console.error('Failed to launch Claude CLI:', result.error.message);
@@ -218,6 +246,26 @@ function runClaude(job) {
       }));
     }
     return 1;
+  }
+
+  const emailFields = parseEmailBlock(result.stdout ?? '');
+
+  if (emailFields) {
+    console.log('\n  EMAIL APPLICATION DETECTED');
+    console.log(`  To:      ${emailFields.applicationEmail}`);
+    console.log(`  Subject: ${emailFields.emailSubject}`);
+    console.log(`  Body:\n${emailFields.emailBody.split('\\n').map(l => `    ${l}`).join('\n')}`);
+    if (autoMode) {
+      saveApplied(upsertRecord(loadApplied(), {
+        url: job.url, title: job.title, company: job.company,
+        status: 'email_pending', mode: 'auto',
+        applicationEmail: emailFields.applicationEmail,
+        emailSubject: emailFields.emailSubject,
+        emailBody: emailFields.emailBody,
+      }));
+      console.log('  Logged as: email_pending → data/applied.json');
+    }
+    return 0;
   }
 
   if (autoMode) {

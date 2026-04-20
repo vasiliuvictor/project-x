@@ -1,6 +1,7 @@
 import { fetch } from './base-scraper.js';
 import { parse, textContent, getAttr } from '../parser/html-parser.js';
 import { query } from '../parser/selectors.js';
+import { parseXml, findAll, getText } from '../parser/xml-parser.js';
 import { logger } from '../logger.js';
 
 export async function scrapeJobs(config) {
@@ -43,7 +44,9 @@ export async function scrapeJobs(config) {
 
       const jobs = source.type === 'json'
         ? extractJobsFromJson(response.body, source)
-        : extractJobs(response.body, source);
+        : source.type === 'rss'
+          ? extractJobsFromRss(response.body, source)
+          : extractJobs(response.body, source);
       logger.info(`${source.name}: found ${jobs.length} job listings`);
       allJobs.push(...jobs);
     } catch (err) {
@@ -241,6 +244,41 @@ function extractJobsFromJson(body, source) {
     }
     return job;
   }).filter(j => j.title || j.company);
+}
+
+function extractJobsFromRss(xml, source) {
+  let nodes;
+  try {
+    nodes = parseXml(xml);
+  } catch (err) {
+    logger.error(`Failed to parse RSS from ${source.name}:`, err.message);
+    return [];
+  }
+
+  const items = findAll(nodes, 'item');
+  return items.map(item => {
+    const title   = getText(item, 'title');
+    const url     = getText(item, 'link');
+    const company = getText(item, source.rssFields?.company || 'source') ||
+                    getText(item, 'author') || '';
+    const location = getText(item, source.rssFields?.location || 'location') || '';
+    const description = getText(item, 'description')
+      .replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+      .substring(0, 500);
+    const postedDate = getText(item, 'pubDate');
+
+    return {
+      source: source.name,
+      technology: source.technology || '',
+      scrapedAt: new Date().toISOString(),
+      title,
+      company,
+      location,
+      description,
+      postedDate,
+      url,
+    };
+  }).filter(j => j.title && j.url);
 }
 
 function extractJobs(html, source) {

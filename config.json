@@ -65,31 +65,58 @@
         {
           "name": "Indeed Sweden - Angular",
           "technology": "Angular",
-          "url": "https://se.indeed.com/jobs?q=Angular&l=Sverige",
-          "type": "html",
-          "selectors": {
-            "container": ".job_seen_beacon",
-            "title": "h2.jobTitle a span",
-            "company": ".companyName",
-            "location": ".companyLocation",
-            "salary": ".salary-snippet-container",
-            "description": ".job-snippet",
-            "link": "h2.jobTitle a[href]"
-          }
+          "url": "https://se.indeed.com/rss?q=Angular+developer&l=Sverige&sort=date",
+          "type": "rss"
         },
         {
           "name": "Indeed Sweden - Java",
           "technology": "Java",
-          "url": "https://se.indeed.com/jobs?q=Java&l=Sverige",
+          "url": "https://se.indeed.com/rss?q=Java+developer&l=Sverige&sort=date",
+          "type": "rss"
+        },
+        {
+          "name": "Indeed Sweden - Oracle",
+          "technology": "Oracle",
+          "url": "https://se.indeed.com/rss?q=Oracle+PL%2FSQL&l=Sverige&sort=date",
+          "type": "rss"
+        },
+        {
+          "name": "LinkedIn - Angular",
+          "technology": "Angular",
+          "url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=Angular+developer&location=Sweden&f_TPR=r604800&start=0",
           "type": "html",
           "selectors": {
-            "container": ".job_seen_beacon",
-            "title": "h2.jobTitle a span",
-            "company": ".companyName",
-            "location": ".companyLocation",
-            "salary": ".salary-snippet-container",
-            "description": ".job-snippet",
-            "link": "h2.jobTitle a[href]"
+            "container": ".base-card",
+            "title": ".base-search-card__title",
+            "company": ".base-search-card__subtitle a",
+            "location": ".job-search-card__location",
+            "link": "a.base-card__full-link"
+          }
+        },
+        {
+          "name": "LinkedIn - Java",
+          "technology": "Java",
+          "url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=Java+developer&location=Sweden&f_TPR=r604800&start=0",
+          "type": "html",
+          "selectors": {
+            "container": ".base-card",
+            "title": ".base-search-card__title",
+            "company": ".base-search-card__subtitle a",
+            "location": ".job-search-card__location",
+            "link": "a.base-card__full-link"
+          }
+        },
+        {
+          "name": "LinkedIn - Oracle",
+          "technology": "Oracle",
+          "url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=Oracle+PL%2FSQL&location=Sweden&f_TPR=r604800&start=0",
+          "type": "html",
+          "selectors": {
+            "container": ".base-card",
+            "title": ".base-search-card__title",
+            "company": ".base-search-card__subtitle a",
+            "location": ".job-search-card__location",
+            "link": "a.base-card__full-link"
           }
         }
       ]
