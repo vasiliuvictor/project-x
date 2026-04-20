@@ -133,16 +133,38 @@ export function dashboardPage() {
         loadTab(tab);
       }
 
+      async function downloadData() {
+        const sel = document.getElementById('dl-select');
+        const [apiType, filename] = sel.value.split('|');
+        const data = await fetchJson('/api/results/' + apiType);
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+
+      const dlBar = '<div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">'
+        + '<select id="dl-select" class="btn" style="cursor:pointer">'
+        + '<option value="news|news.json">News</option>'
+        + '<option value="real-estate|real-estate.json">Real Estate</option>'
+        + '<option value="jobs|jobs.json">Jobs</option>'
+        + '<option value="run-log|run-log.json">Run Log</option>'
+        + '</select>'
+        + '<button class="btn btn-primary" onclick="downloadData()">Download</button>'
+        + '</div>';
+
       async function loadTab(tab) {
         const content = document.getElementById('content');
 
         if (tab === 'log') {
           const logs = await fetchJson('/api/results/run-log');
           if (!logs.length) {
-            content.innerHTML = '<div class="empty"><h3>No runs yet</h3><p>Click "Run Now" to start your first scrape</p></div>';
+            content.innerHTML = dlBar + '<div class="empty"><h3>No runs yet</h3><p>Click "Run Now" to start your first scrape</p></div>';
             return;
           }
-          content.innerHTML = '<div class="run-log">' + logs.map(l => {
+          content.innerHTML = dlBar + '<div class="run-log">' + logs.map(l => {
             const stats = Object.entries(l.results || {}).map(([k, v]) =>
               '<span class="log-stat">+' + (v.added || 0) + ' ' + k + '</span>'
             ).join('');
