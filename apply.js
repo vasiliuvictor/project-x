@@ -22,6 +22,13 @@ const limitFlag = (() => {
   return Number.isFinite(n) && n > 0 ? n : 1;
 })();
 
+const maxStepsFlag = (() => {
+  const idx = args.indexOf('--max-steps');
+  if (idx === -1) return null;
+  const n = parseInt(args[idx + 1], 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+})();
+
 const candidateFlag = (() => {
   const idx = args.indexOf('--candidate');
   if (idx === -1) return null;
@@ -107,6 +114,10 @@ function pickNextJob(jobs, applied) {
     const rec = findRecord(applied, j.url);
     return !rec || rec.status === 'error';
   }) ?? null;
+}
+
+function detectMaxSteps(output) {
+  return /maximum turns reached/i.test(output ?? '');
 }
 
 // --- Select candidate profile at build time (no Read tool needed) ---
@@ -229,9 +240,12 @@ function runClaude(job) {
     }));
   }
 
+  const claudeArgs = ['--print', '--model', 'claude-haiku-4-5-20251001', '--allowedTools', ALLOWED_TOOLS];
+  if (maxStepsFlag) claudeArgs.push('--max-turns', String(maxStepsFlag));
+
   const result = spawnSync(
     'claude',
-    ['--print', '--model', 'claude-haiku-4-5-20251001', '--allowedTools', ALLOWED_TOOLS],
+    claudeArgs,
     { input: prompt, stdio: ['pipe', 'pipe', 'inherit'], encoding: 'utf-8', env: process.env },
   );
 
@@ -269,7 +283,8 @@ function runClaude(job) {
   }
 
   if (autoMode) {
-    const status = (result.status ?? 1) === 0 ? 'successful' : 'error';
+    const hitMaxSteps = maxStepsFlag && ((result.status ?? 1) !== 0 || detectMaxSteps(result.stdout));
+    const status = hitMaxSteps ? 'max_steps' : (result.status ?? 1) === 0 ? 'successful' : 'error';
     saveApplied(upsertRecord(loadApplied(), {
       url: job.url, title: job.title, company: job.company, status, mode: 'auto',
     }));
@@ -309,7 +324,8 @@ function runClaude(job) {
   }
 
   const candidateLabel = candidateFlag ? ` [candidate: ${candidateFlag}]` : '';
-  console.log(`\n  Mode: ${autoMode ? 'AUTO (will submit)' : 'DRY RUN (will stop before submit)'}${candidateLabel}  |  Limit: ${limitFlag} job(s)\n`);
+  const stepsLabel = maxStepsFlag ? `  |  Max steps: ${maxStepsFlag}` : '';
+  console.log(`\n  Mode: ${autoMode ? 'AUTO (will submit)' : 'DRY RUN (will stop before submit)'}${candidateLabel}  |  Limit: ${limitFlag} job(s)${stepsLabel}\n`);
 
   let processed = 0;
   let lastExitCode = 0;
