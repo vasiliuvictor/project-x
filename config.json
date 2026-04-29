@@ -40,6 +40,7 @@
         {
           "name": "Arbetsförmedlingen",
           "url": "https://platsbanken-api.arbetsformedlingen.se/jobs/v1/search",
+          "impl": "arbets",
           "type": "json",
           "method": "post",
           "keywords": ["Angular", "Java", "Database", "Oracle", "SQL", "PLSQL"],
@@ -63,61 +64,29 @@
           }
         },
         {
-          "name": "Indeed Sweden - Angular",
-          "technology": "Angular",
-          "url": "https://se.indeed.com/rss?q=Angular+developer&l=Sverige&sort=date",
-          "type": "rss"
-        },
-        {
-          "name": "Indeed Sweden - Java",
-          "technology": "Java",
-          "url": "https://se.indeed.com/rss?q=Java+developer&l=Sverige&sort=date",
-          "type": "rss"
-        },
-        {
-          "name": "Indeed Sweden - Oracle",
-          "technology": "Oracle",
-          "url": "https://se.indeed.com/rss?q=Oracle+PL%2FSQL&l=Sverige&sort=date",
-          "type": "rss"
-        },
-        {
-          "name": "LinkedIn - Angular",
-          "technology": "Angular",
-          "url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=Angular+developer&location=Sweden&f_TPR=r604800&start=0",
-          "type": "html",
-          "selectors": {
-            "container": ".base-card",
-            "title": ".base-search-card__title",
-            "company": ".base-search-card__subtitle a",
-            "location": ".job-search-card__location",
-            "link": "a.base-card__full-link"
-          }
-        },
-        {
-          "name": "LinkedIn - Java",
-          "technology": "Java",
-          "url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=Java+developer&location=Sweden&f_TPR=r604800&start=0",
-          "type": "html",
-          "selectors": {
-            "container": ".base-card",
-            "title": ".base-search-card__title",
-            "company": ".base-search-card__subtitle a",
-            "location": ".job-search-card__location",
-            "link": "a.base-card__full-link"
-          }
-        },
-        {
-          "name": "LinkedIn - Oracle",
-          "technology": "Oracle",
-          "url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=Oracle+PL%2FSQL&location=Sweden&f_TPR=r604800&start=0",
-          "type": "html",
-          "selectors": {
-            "container": ".base-card",
-            "title": ".base-search-card__title",
-            "company": ".base-search-card__subtitle a",
-            "location": ".job-search-card__location",
-            "link": "a.base-card__full-link"
-          }
+          "name": "EURES Europa",
+          "url": "https://europa.eu/eures/api/jv-searchengine/public/jv-search/search",
+          "impl": "eures",
+          "type": "json",
+          "method": "post",
+          "keywords": [{"titleKey":"Developer", "description":"Angular"},{"titleKey":"Engineer", "description":"Angular"}, {"titleKey":"Developer", "description":"Java"},{"titleKey":"Engineer", "description":"Java"}, {"titleKey":"Data", "description":"Oracle"}, {"titleKey":"Data" , "description":"SQL"}, {"titleKey":"Data" , "description":"Database"}, {"titleKey":"Data" , "description":"PLSQL"}],
+          "searchBody": {
+            "locationCodes": ["se"]
+          },
+          "pagination": {
+            "countField": "numberRecords",
+            "pageSize": 50,
+            "style": "page"
+          },
+          "mappings": {
+            "list": "jvs",
+            "title": "title",
+            "company": "employer.name",
+            "description": "description",
+            "postedDate": "creationDate",
+            "id": "id"
+          },
+          "urlTemplate": "https://eures.europa.eu/en/job-vacancies/jv-details/{id}"
         }
       ]
     },
@@ -135,6 +104,6 @@
 
   "storage": {
     "dataDir": "./data",
-    "maxItemsPerType": 2000
+    "maxItemsPerType": 10000
   }
 }

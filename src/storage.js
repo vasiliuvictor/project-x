@@ -19,7 +19,8 @@ export function read(type) {
   const fp = filePath(type);
   if (!existsSync(fp)) return [];
   try {
-    return JSON.parse(readFileSync(fp, 'utf-8'));
+    const parsed = JSON.parse(readFileSync(fp, 'utf-8'));
+    return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
     logger.error(`Failed to read ${fp}:`, err.message);
     return [];

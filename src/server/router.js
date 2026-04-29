@@ -69,9 +69,12 @@ export function handleRequest(req, res, config) {
         jobs: {
           enabled: config.scrapers.jobs.enabled,
           sourceCount: config.scrapers.jobs.sources.length,
-          filters: [...new Set(config.scrapers.jobs.sources.flatMap(s =>
-            s.keywords ? s.keywords : (s.technology ? [s.technology] : [])
-          ))],
+          filters: [...new Set(config.scrapers.jobs.sources.flatMap(s => {
+            if (!s.keywords) return s.technology ? [s.technology] : [];
+            return s.keywords.map(kw =>
+              typeof kw === 'object' ? (kw.description || kw.titleKey || '') : kw
+            ).filter(Boolean);
+          }))],
         },
         news: { enabled: config.scrapers.news.enabled, feedCount: config.scrapers.news.feeds.length, keywords: config.scrapers.news.keywords },
       },

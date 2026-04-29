@@ -11,53 +11,99 @@ export async function scrapeJobs(config) {
   for (const source of sources) {
     try {
       logger.info(`Scraping jobs: ${source.name} (${source.url})`);
-
-      if (source.method === 'post' && source.searchBody && source.pagination) {
-        const keywords = source.keywords || [null];
-        for (const keyword of keywords) {
-          const derived = {
-            ...source,
-            technology: keyword || source.technology || '',
-            searchBody: {
-              ...source.searchBody,
-              ...(keyword ? { filters: [{ type: 'freetext', value: keyword }] } : {}),
-            },
-          };
-          const jobs = await scrapeWithPagination(derived, config);
-          logger.info(`${source.name}${keyword ? ` [${keyword}]` : ''}: found ${jobs.length} job listings`);
-          allJobs.push(...jobs);
-        }
-        continue;
+      let jobs;
+      switch (source.impl) {
+        case 'eures':
+          jobs = await scrapeEuresSource(source, config);
+          break;
+        case 'arbets':
+          jobs = await scrapeArbetsSource(source, config);
+          break;
+        default:
+          jobs = await scrapeSimpleSource(source, config);
       }
-
-      const response = await fetch(source.url, {
-        userAgent: config.userAgent,
-        timeoutMs: config.requestTimeoutMs,
-        maxRedirects: config.maxRedirects,
-        delayMs: config.requestDelayMs,
-      });
-
-      if (response.statusCode !== 200) {
-        logger.warn(`${source.name} returned status ${response.statusCode}`);
-        continue;
-      }
-
-      const jobs = source.type === 'json'
-        ? extractJobsFromJson(response.body, source)
-        : source.type === 'rss'
-          ? extractJobsFromRss(response.body, source)
-          : extractJobs(response.body, source);
-      logger.info(`${source.name}: found ${jobs.length} job listings`);
+      logger.info(`${source.name}: found ${jobs.length} total job listings`);
       allJobs.push(...jobs);
     } catch (err) {
       logger.error(`Failed to scrape ${source.name}:`, err.message);
     }
   }
 
+  const seen = new Set();
+  const deduped = allJobs.filter(job => {
+    if (!job.url || seen.has(job.url)) return false;
+    seen.add(job.url);
+    return true;
+  });
+  if (deduped.length < allJobs.length) {
+    logger.info(`Deduplication removed ${allJobs.length - deduped.length} duplicate job(s)`);
+  }
+  return deduped;
+}
+
+async function scrapeEuresSource(source, config) {
+  const keywords = source.keywords || [null];
+  const allJobs = [];
+  for (const keyword of keywords) {
+    const keywordOverride = keyword ? { keywords: buildEuresKeywords(keyword) } : {};
+    const technologyLabel = keyword && typeof keyword === 'object'
+      ? (keyword.description || keyword.titleKey || '')
+      : (keyword || '');
+    const derived = {
+      ...source,
+      technology: technologyLabel || source.technology || '',
+      searchBody: { ...source.searchBody, ...keywordOverride },
+    };
+    const jobs = await scrapeEures(derived, config);
+    logger.info(`${source.name}${technologyLabel ? ` [${technologyLabel}]` : ''}: found ${jobs.length} job listings`);
+    allJobs.push(...jobs);
+  }
   return allJobs;
 }
 
-async function scrapeWithPagination(source, config) {
+async function scrapeArbetsSource(source, config) {
+  const keywords = source.keywords || [null];
+  const allJobs = [];
+  for (const keyword of keywords) {
+    const keywordOverride = keyword ? { filters: [{ type: 'freetext', value: keyword }] } : {};
+    const derived = {
+      ...source,
+      technology: keyword || source.technology || '',
+      searchBody: { ...source.searchBody, ...keywordOverride },
+    };
+    const jobs = await scrapeArbets(derived, config);
+    logger.info(`${source.name}${keyword ? ` [${keyword}]` : ''}: found ${jobs.length} job listings`);
+    allJobs.push(...jobs);
+  }
+  return allJobs;
+}
+
+async function scrapeSimpleSource(source, config) {
+  const response = await fetch(source.url, {
+    userAgent: config.userAgent,
+    timeoutMs: config.requestTimeoutMs,
+    maxRedirects: config.maxRedirects,
+    delayMs: config.requestDelayMs,
+  });
+  if (response.statusCode !== 200) {
+    logger.warn(`${source.name} returned status ${response.statusCode}`);
+    return [];
+  }
+  return source.type === 'json'
+    ? extractJobsFromJson(response.body, source)
+    : source.type === 'rss'
+      ? extractJobsFromRss(response.body, source)
+      : extractJobs(response.body, source);
+}
+
+function buildEuresKeywords(kw) {
+  const result = [];
+  if (kw.description) result.push({ keyword: kw.description, specificSearchCode: 'EVERYWHERE' });
+  if (kw.titleKey) result.push({ keyword: kw.titleKey, specificSearchCode: 'TITLE' });
+  return result;
+}
+
+async function scrapeArbets(source, config) {
   const { pagination, searchBody } = source;
   const fetchOpts = {
     userAgent: config.userAgent,
@@ -68,7 +114,6 @@ async function scrapeWithPagination(source, config) {
     contentType: 'application/json',
   };
 
-  // Step 1: Initial request to get total count
   const countBody = JSON.stringify({
     ...searchBody,
     maxRecords: 1,
@@ -99,7 +144,6 @@ async function scrapeWithPagination(source, config) {
   const totalPages = Math.ceil(totalAds / pagination.pageSize);
   logger.info(`${source.name}: ${totalAds} total ads, fetching ${totalPages} page(s)`);
 
-  // Step 2: Fetch all pages
   const allJobs = [];
   for (let page = 0; page < totalPages; page++) {
     const pageBody = JSON.stringify({
@@ -117,15 +161,10 @@ async function scrapeWithPagination(source, config) {
         continue;
       }
 
-      let jobs;
-      if (source.url.includes('platsbanken-api.arbetsformedlingen.se')) {
-        let pageData;
-        try { pageData = JSON.parse(response.body); } catch { pageData = {}; }
-        const ads = pageData.ads || [];
-        jobs = await fetchPlatsbankenJobDetails(ads, source, config);
-      } else {
-        jobs = extractJobsFromJson(response.body, source);
-      }
+      let pageData;
+      try { pageData = JSON.parse(response.body); } catch { pageData = {}; }
+      const ads = pageData.ads || [];
+      const jobs = await fetchPlatsbankenJobDetails(ads, source, config);
       allJobs.push(...jobs);
       logger.debug(`${source.name}: page ${page} returned ${jobs.length} jobs`);
     } catch (err) {
@@ -134,6 +173,160 @@ async function scrapeWithPagination(source, config) {
   }
 
   return allJobs;
+}
+
+async function scrapeEures(source, config) {
+  const { pagination, searchBody } = source;
+  const fetchOpts = {
+    userAgent: config.userAgent,
+    timeoutMs: config.requestTimeoutMs,
+    maxRedirects: config.maxRedirects,
+    delayMs: config.requestDelayMs,
+    method: 'POST',
+    contentType: 'application/json',
+  };
+
+  function buildBody(page) {
+    return JSON.stringify({
+      resultsPerPage: pagination.pageSize,
+      page,
+      sortSearch: 'BEST_MATCH',
+      keywords: searchBody.keywords || [],
+      locationCodes: searchBody.locationCodes || [],
+    });
+  }
+
+  const firstResponse = await fetch(source.url, { ...fetchOpts, body: buildBody(1) });
+  if (firstResponse.statusCode !== 200) {
+    logger.warn(`${source.name} returned status ${firstResponse.statusCode}`);
+    return [];
+  }
+
+  let firstData;
+  try {
+    firstData = JSON.parse(firstResponse.body);
+  } catch (err) {
+    logger.error(`Failed to parse response from ${source.name}:`, err.message);
+    return [];
+  }
+
+  const totalRecords = firstData[pagination.countField];
+  if (typeof totalRecords !== 'number' || totalRecords <= 0) {
+    logger.info(`${source.name}: no records found (${pagination.countField}=${totalRecords})`);
+    return [];
+  }
+
+  const totalPages = Math.ceil(totalRecords / pagination.pageSize);
+  logger.info(`${source.name}: ${totalRecords} total records, fetching ${totalPages} page(s)`);
+
+  const allIds = (firstData.jvs || []).filter(j => j.id).map(j => j.id);
+  logger.debug(`${source.name}: page 1 collected ${allIds.length} ids`);
+
+  for (let page = 2; page <= totalPages; page++) {
+    try {
+      const response = await fetch(source.url, { ...fetchOpts, body: buildBody(page) });
+      if (response.statusCode !== 200) {
+        logger.warn(`${source.name} page ${page} returned status ${response.statusCode}`);
+        continue;
+      }
+      let pageData;
+      try { pageData = JSON.parse(response.body); } catch { pageData = {}; }
+      const ids = (pageData.jvs || []).filter(j => j.id).map(j => j.id);
+      allIds.push(...ids);
+      logger.debug(`${source.name}: page ${page} collected ${ids.length} ids`);
+    } catch (err) {
+      logger.error(`${source.name} page ${page} failed:`, err.message);
+    }
+  }
+
+  logger.info(`${source.name}: fetching details for ${allIds.length} jobs`);
+  return fetchEuresJobDetails(allIds, source, config);
+}
+
+const ARBETS_RE = /arbetsformedlingen\.se\/platsbanken\/annonser\/(\d+)/;
+
+async function fetchEuresJobDetails(ids, source, config) {
+  const BATCH_SIZE = 25;
+  const detailFetchOpts = {
+    userAgent: config.userAgent,
+    timeoutMs: config.requestTimeoutMs,
+    maxRedirects: config.maxRedirects,
+    delayMs: 0,
+  };
+
+  async function fetchOne(id) {
+    const response = await fetch(
+      `https://europa.eu/eures/api/jv-searchengine/public/jv/id/${id}?requestLang=en&preferredLang=en`,
+      detailFetchOpts,
+    );
+    if (response.statusCode !== 200) {
+      logger.warn(`${source.name}: detail ${id} returned status ${response.statusCode}`);
+      return null;
+    }
+
+    let detail;
+    try { detail = JSON.parse(response.body); } catch { return null; }
+
+    const lang = detail.preferredLanguage || 'en';
+    const profile = detail.jvProfiles?.[lang] || detail.jvProfiles?.en || {};
+    const location = profile.locations?.[0];
+
+    for (const instr of (profile.applicationInstructions || [])) {
+      const match = ARBETS_RE.exec(instr);
+      if (match) {
+        return fetchPlatsbankenDetail(match[1], source, detailFetchOpts);
+      }
+    }
+
+    return {
+      source: source.name,
+      technology: source.technology || '',
+      scrapedAt: new Date().toISOString(),
+      title: profile.title || '',
+      company: profile.employer?.name || '',
+      location: location?.cityName || '',
+      url: `https://eures.europa.eu/en/job-vacancies/jv-details/${id}`,
+    };
+  }
+
+  const jobs = [];
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    const batch = ids.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(batch.map(fetchOne));
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        jobs.push(result.value);
+      } else if (result.status === 'rejected') {
+        logger.error(`${source.name}: detail fetch failed:`, result.reason?.message);
+      }
+    }
+    logger.debug(`${source.name} - ${source.technology}: fetched details batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(ids.length / BATCH_SIZE)}`);
+  }
+
+  return jobs;
+}
+
+async function fetchPlatsbankenDetail(id, source, fetchOpts) {
+  const response = await fetch(
+    `https://platsbanken-api.arbetsformedlingen.se/jobs/v1/job/${id}`,
+    fetchOpts,
+  );
+  if (response.statusCode !== 200) {
+    logger.warn(`${source.name}: job detail ${id} returned status ${response.statusCode}`);
+    return null;
+  }
+  const detail = JSON.parse(response.body);
+  return {
+    source: source.name,
+    technology: source.technology || '',
+    scrapedAt: new Date().toISOString(),
+    title: detail.title || '',
+    company: detail.workplace?.name || '',
+    location: detail.workplace?.city || '',
+    postedDate: detail.publishedDate || '',
+    url: detail.application?.webAddress ||
+      `https://arbetsformedlingen.se/platsbanken/annonser/${id}`,
+  };
 }
 
 async function fetchPlatsbankenJobDetails(ads, source, config) {
@@ -145,35 +338,12 @@ async function fetchPlatsbankenJobDetails(ads, source, config) {
     delayMs: 0,
   };
 
-  async function fetchOne(id) {
-    const response = await fetch(
-      `https://platsbanken-api.arbetsformedlingen.se/jobs/v1/job/${id}`,
-      fetchOpts,
-    );
-    if (response.statusCode !== 200) {
-      logger.warn(`${source.name}: job detail ${id} returned status ${response.statusCode}`);
-      return null;
-    }
-    const detail = JSON.parse(response.body);
-    return {
-      source: source.name,
-      technology: source.technology || '',
-      scrapedAt: new Date().toISOString(),
-      title: detail.title || '',
-      company: detail.workplace?.name || '',
-      location: detail.workplace?.city || '',
-      postedDate: detail.publishedDate || '',
-      url: detail.application?.webAddress ||
-        `https://arbetsformedlingen.se/platsbanken/annonser/${id}`,
-    };
-  }
-
   const validAds = ads.filter(ad => ad.id);
   const jobs = [];
 
   for (let i = 0; i < validAds.length; i += BATCH_SIZE) {
     const batch = validAds.slice(i, i + BATCH_SIZE);
-    const results = await Promise.allSettled(batch.map(ad => fetchOne(ad.id)));
+    const results = await Promise.allSettled(batch.map(ad => fetchPlatsbankenDetail(ad.id, source, fetchOpts)));
     for (const result of results) {
       if (result.status === 'fulfilled' && result.value) {
         jobs.push(result.value);
@@ -185,6 +355,10 @@ async function fetchPlatsbankenJobDetails(ads, source, config) {
   }
 
   return jobs;
+}
+
+function getNestedValue(obj, path) {
+  return path.split('.').reduce((cur, key) => cur?.[key], obj);
 }
 
 function extractJobsFromJson(body, source) {
@@ -221,15 +395,21 @@ function extractJobsFromJson(body, source) {
       technology: source.technology || '',
       scrapedAt: new Date().toISOString(),
     };
-    if (mappings.title) job.title = item[mappings.title] || '';
-    if (mappings.company) job.company = item[mappings.company] || '';
-    if (mappings.location) job.location = item[mappings.location] || '';
-    if (mappings.salary) job.salary = item[mappings.salary] || '';
-    if (mappings.description) job.description = (item[mappings.description] || '').substring(0, 500);
-    if (mappings.postedDate) job.postedDate = item[mappings.postedDate] || '';
+    if (mappings.title) job.title = String(getNestedValue(item, mappings.title) ?? '');
+    if (mappings.company) job.company = String(getNestedValue(item, mappings.company) ?? '');
+    if (mappings.location) job.location = String(getNestedValue(item, mappings.location) ?? '');
+    if (mappings.salary) job.salary = String(getNestedValue(item, mappings.salary) ?? '');
+    if (mappings.description) {
+      const raw = getNestedValue(item, mappings.description);
+      job.description = String(raw ?? '').substring(0, 500);
+    }
+    if (mappings.postedDate) {
+      const raw = getNestedValue(item, mappings.postedDate);
+      job.postedDate = typeof raw === 'number' ? new Date(raw).toISOString() : String(raw ?? '');
+    }
     // Extract sourceLinks (array with label + url)
     if (mappings.sourceLink) {
-      const links = item[mappings.sourceLink];
+      const links = getNestedValue(item, mappings.sourceLink);
       if (Array.isArray(links) && links.length > 0) {
         job.sourceLinkLabel = links[0].label || '';
         job.url = links[0].url || '';
@@ -237,10 +417,10 @@ function extractJobsFromJson(body, source) {
     }
     // Build URL from template + id, or use direct url mapping
     if (!job.url && source.urlTemplate && mappings.id) {
-      const id = item[mappings.id] || '';
+      const id = getNestedValue(item, mappings.id) || '';
       job.url = source.urlTemplate.replace('{id}', id);
     } else if (!job.url && mappings.url) {
-      job.url = item[mappings.url] || '';
+      job.url = String(getNestedValue(item, mappings.url) ?? '');
     }
     return job;
   }).filter(j => j.title || j.company);
